@@ -114,7 +114,7 @@ def tiler_sink_pad_buffer_probe(pad,info,u_data):
             #print("stream_"+str(frame_meta.pad_index))
             try: 
                 # Casting l_obj.data to pyds.NvDsObjectMeta
-                obj_meta=pyds.NvDsObjectMeta.cast(l_obj.data)
+                obj_meta = pyds.NvDsObjectMeta.cast(l_obj.data)
             except StopIteration:
                 break
             obj_counter[obj_meta.class_id] += 1
@@ -122,22 +122,22 @@ def tiler_sink_pad_buffer_probe(pad,info,u_data):
             # If such detections are found, annoate the frame with bboxes and confidence value.
             # Save the annotated frame to file.
             
-            print(obj_meta.confidence)
+            #print(obj_meta.confidence)
             if obj_meta.class_id == 0 and obj_meta.confidence > 0.85:
-                if is_first_obj:
-                    is_first_obj = False
-                    # Getting Image data using nvbufsurface
-                    # the input should be address of buffer and batch_id
-                    n_frame=pyds.get_nvds_buf_surface(hash(gst_buffer),frame_meta.batch_id)
-                    #convert python array into numy array format.
-                    frame_image=np.array(n_frame,copy=True,order='C')
-                    #covert the array into cv2 default color format
-                    frame_image=cv2.cvtColor(frame_image,cv2.COLOR_RGBA2BGRA)
+                # Getting Image data using nvbufsurface
+                # the input should be address of buffer and batch_id
+                n_frame = pyds.get_nvds_buf_surface(hash(gst_buffer), frame_meta.batch_id)
+
+                #convert python array into numy array format.
+                frame_image = np.array(n_frame, copy=True, order='C')
+
+                #covert the array into cv2 default color format
+                frame_image = cv2.cvtColor(frame_image, cv2.COLOR_RGBA2BGRA)
 
                 #image=cv2.line(frame_image,(10,500),(600,500), (0,255,0), 4)
                 save_image = True
-                print("face : ", obj_counter[obj_meta.class_id])
-                frame_image=draw_bounding_boxes(frame_image, obj_meta,obj_meta.confidence)
+                print("face : ", obj_counter[obj_meta.class_id], obj_meta.confidence)
+                frame_image = draw_bounding_boxes(frame_image, obj_meta,obj_meta.confidence)
             try: 
                 l_obj=l_obj.next
             except StopIteration:
@@ -335,7 +335,8 @@ def main(args):
             sys.stderr.write(" Unable to create transform \n")
 
     print("Creating EGLSink \n")
-    # edgar: cambio esta linea para no desplegar video - sink = Gst.ElementFactory.make("nveglglessink", "nvvideo-renderer")
+    # edgar: cambio esta linea para no desplegar video - 
+    #sink = Gst.ElementFactory.make("nveglglessink", "nvvideo-renderer")
     sink = Gst.ElementFactory.make("fakesink", "fakesink")
 
     if not sink:
