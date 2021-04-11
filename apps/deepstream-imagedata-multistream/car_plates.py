@@ -76,6 +76,7 @@ def tiler_sink_pad_buffer_probe(pad,info,u_data):
     frame_number=0
     num_rects=0
     gst_buffer = info.get_buffer()
+
     if not gst_buffer:
         print("Unable to get GstBuffer ")
         return
@@ -121,14 +122,8 @@ def tiler_sink_pad_buffer_probe(pad,info,u_data):
             # If such detections are found, annoate the frame with bboxes and confidence value.
             # Save the annotated frame to file.
             
-            #print(obj_meta.confidence)
-            #print("stream_"+str(frame_meta.pad_index)) 
-            #(saved_count["stream_"+str(frame_meta.pad_index)]%30==0) and 
-            #if((obj_meta.confidence>0.3 and obj_meta.confidence<0.51)):
-            #obj_meta.class_id == 1
-            #and (saved_count["stream_"+str(frame_meta.pad_index)]%10==0)):
             print(obj_meta.confidence)
-            if ( obj_meta.class_id == 0 and obj_meta.confidence > 0.85 )  :
+            if obj_meta.class_id == 0 and obj_meta.confidence > 0.85:
                 if is_first_obj:
                     is_first_obj = False
                     # Getting Image data using nvbufsurface
@@ -141,8 +136,8 @@ def tiler_sink_pad_buffer_probe(pad,info,u_data):
 
                 #image=cv2.line(frame_image,(10,500),(600,500), (0,255,0), 4)
                 save_image = True
-                print("Carita : ",obj_counter[obj_meta.class_id])
-                frame_image=draw_bounding_boxes(frame_image,obj_meta,obj_meta.confidence)
+                print("face : ", obj_counter[obj_meta.class_id])
+                frame_image=draw_bounding_boxes(frame_image, obj_meta,obj_meta.confidence)
             try: 
                 l_obj=l_obj.next
             except StopIteration:
@@ -340,14 +335,8 @@ def main(args):
             sys.stderr.write(" Unable to create transform \n")
 
     print("Creating EGLSink \n")
-    # edgar: cambiar de esto a la siguiente linea para no desplegar video - sink = Gst.ElementFactory.make("nveglglessink", "nvvideo-renderer")
+    # edgar: cambio esta linea para no desplegar video - sink = Gst.ElementFactory.make("nveglglessink", "nvvideo-renderer")
     sink = Gst.ElementFactory.make("fakesink", "fakesink")
-
-
-
-
-
-
 
     if not sink:
         sys.stderr.write(" Unable to create egl sink \n")
@@ -364,7 +353,7 @@ def main(args):
     streammux.set_property('batch-size', number_sources)
     streammux.set_property('batched-push-timeout', 4000000)
     print('CURRENT_DIR', CURRENT_DIR)
-    pgie.set_property('config-file-path',CURRENT_DIR + "/pgie_config_facenet.txt")
+    pgie.set_property('config-file-path',CURRENT_DIR + "/configs/pgie_config_facenet.txt")
     print("hola")
     pgie_batch_size=pgie.get_property("batch-size")
     if(pgie_batch_size != number_sources):
