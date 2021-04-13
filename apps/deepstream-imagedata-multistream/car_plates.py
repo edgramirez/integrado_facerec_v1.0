@@ -42,13 +42,26 @@ import pyds
 import cv2
 import os
 import os.path
+import face_recognition
+import lib.biblioteca as biblio
+from datetime import datetime, timedelta
 from os import path
+
+
+
 fps_streams={}
 frame_count={}
 saved_count={}
 global PGIE_CLASS_ID_FACE
 PGIE_CLASS_ID_FACE=0
 global PGIE_CLASS_ID_MAKE
+global total_visitors
+global known_face_encodings
+global known_face_metadata
+
+known_face_encodings = []
+known_face_metadata = []
+total_visitors = 0
 PGIE_CLASS_ID_MAKE=2
 
 MAX_DISPLAY_LEN=64
@@ -69,6 +82,68 @@ GST_CAPS_FEATURES_NVMM="memory:NVMM"
 pgie_classes_str= ["carita", "Placa", "Marca","Modelo"]
 
 CURRENT_DIR = os.getcwd()
+
+
+def get_faces_locations(n_frame):
+
+    # convert python array into numy array format.
+    frame_image = np.array(n_frame, copy=True, order='C')
+
+    # covert the array into cv2 default color format
+    #frame_image = cv2.cvtColor(frame_image, cv2.COLOR_RGBA2BGRA)
+    rgb_frame   = cv2.cvtColor(frame_image, cv2.COLOR_RGB2BGR)
+
+    # converting to color
+
+    # get locations if there are
+    face_locations = face_recognition.face_locations(rgb_frame)
+
+    return rgb_frame, face_locations
+
+
+def clasify_to_known_and_unknown(frame_image, face_locations, **kwargs):
+    global known_face_encodings, known_face_metadata, total_visitors
+
+    find = kwargs.get('find', False)
+    silence = kwargs.get('silence', False)
+
+    face_encodings = face_recognition.face_encodings(frame_image, face_locations)
+    face_labels = []
+
+    for face_location, face_encoding in zip(face_locations, face_encodings):
+        # See if this face is in our list of known faces.
+        metadata = biblio.lookup_known_face(face_encoding, known_face_encodings, known_face_metadata)
+
+        face_label = None
+        # If we found the face, label the face with some useful information.
+        if metadata:
+            time_at_door = datetime.now() - metadata['first_seen_this_interaction']
+            face_label = f"{metadata['name']} {int(time_at_door.total_seconds())}s"
+        # If this is a brand new face, add it to our list of known faces
+        else:
+            if not find:
+                face_label = "New visitor" + str(total_visitors) + '!!'
+                total_visitors += 1
+
+                ## Resize frame of video to 1/4 size for faster face recognition processing
+                #small_frame = cv2.resize(frame_image, (0, 0), fx=0.25, fy=0.25)
+
+                # Grab the image of the the face from the current frame of video
+                #top, right, bottom, left = face_location
+                #face_image = small_frame[top:bottom, left:right]
+                #face_image = cv2.resize(face_image, (150, 150))
+
+                # Add the new face to our known faces metadata
+                known_face_metadata = biblio.register_new_face_2(known_face_metadata, frame_image, face_location, 'visitor' + str(total_visitors))
+
+                # Add the face encoding to the list of known faces
+                known_face_encodings.append(face_encoding)
+
+        if face_label is not None:
+            face_labels.append(face_label)
+
+
+
 
 # tiler_sink_pad_buffer_probe  will extract metadata received on tiler src pad
 # and update params for drawing rectangle, object information etc.
@@ -128,15 +203,29 @@ def tiler_sink_pad_buffer_probe(pad,info,u_data):
                 # the input should be address of buffer and batch_id
                 n_frame = pyds.get_nvds_buf_surface(hash(gst_buffer), frame_meta.batch_id)
 
+                frame_image, face_locations = get_faces_locations(n_frame)
+                
                 #convert python array into numy array format.
-                frame_image = np.array(n_frame, copy=True, order='C')
+                #frame_image = np.array(n_frame, copy=True, order='C')
 
                 #covert the array into cv2 default color format
-                frame_image = cv2.cvtColor(frame_image, cv2.COLOR_RGBA2BGRA)
+                #frame_image = cv2.cvtColor(frame_image, cv2.COLOR_RGBA2BGRA)
+
+                # converting to color
+                #rgb_frame = cv2.cvtColor(frame_image, cv2.COLOR_RGB2BGR)
+
+                # get locations if there are 
+                #face_locations = face_recognition.face_locations(rgb_frame)
+
+                if face_locations:
+                    clasify_to_known_and_unknown(frame_image, face_locations)
+
+                # Find all the face locations and face encodings in the current frame of video
+                # edgar -  Esto no esta funcionado pero posible diferencia de tipos de datos : 
 
                 #image=cv2.line(frame_image,(10,500),(600,500), (0,255,0), 4)
                 save_image = True
-                print("face : ", obj_counter[obj_meta.class_id], obj_meta.confidence)
+                #print("face : ", obj_counter[obj_meta.class_id], obj_meta.confidence)
                 frame_image = draw_bounding_boxes(frame_image, obj_meta,obj_meta.confidence)
             try: 
                 l_obj=l_obj.next
@@ -419,6 +508,11 @@ def main(args):
     for i, source in enumerate(args[:-1]):
         if (i != 0):
             print(i, ": ", source)
+
+    # load data, if there is 
+    data_file =  '/home/mit-mexico/github/integrado_facerec_v1.0/apps/deepstream-imagedata-multistream/data/encoded_known_faces/knownFaces.dat'
+    global total_visitors, known_face_encodings, known_face_metadata
+    total_visitors, known_face_encodings, known_face_metadata = biblio.read_pickle(data_file, False)
 
     print("Starting pipeline \n")
     # start play back and listed to events		

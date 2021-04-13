@@ -78,6 +78,36 @@ def register_new_face(known_face_metadata, face_image, name):
     return known_face_metadata
 
 
+def register_new_face_2(known_face_metadata, frame_image, face_location, name):
+    """
+    Add a new person to our list of known faces
+    """
+    # Add a matching dictionary entry to our metadata list.
+    # We can use this to keep track of how many times a person has visited, when we last saw them, etc.
+
+    # Resize frame of video to 1/4 size for faster face recognition processing
+    #small_frame = cv2.resize(frame_image, (0, 0), fx=0.25, fy=0.25)
+
+    # Grab the image of the the face from the current frame of video
+    top, right, bottom, left = face_location
+    #face_image = small_frame[top:bottom, left:right]
+    face_image = frame_image[top:bottom, left:right]
+    face_image = cv2.resize(face_image, (150, 150))
+
+    today_now = datetime.now()
+    known_face_metadata.append({
+        "first_seen": today_now,
+        "first_seen_this_interaction": today_now,
+        "last_seen": today_now,
+        "seen_count": 1,
+        "seen_frames": 1,
+        "name": name,
+        "face_image": face_image,
+    })
+
+    return known_face_metadata
+
+
 def write_to_pickle(known_face_encodings, known_face_metadata, data_file, new_file = True):
     if new_file and com.file_exists(data_file):
         os.remove(data_file)
@@ -159,10 +189,10 @@ def encode_known_faces(known_faces_path, output_file, new_file = True):
             face_image = rgb_small_frame[top:bottom, left:right]
             face_image = cv2.resize(face_image, (150, 150))
 
+            new_known_face_metadata = register_new_face(known_face_metadata, face_image, name)
+
             encoding = face_recognition.face_encodings(face_image)[0]
             known_face_encodings.append(encoding)
-
-            new_known_face_metadata = register_new_face(known_face_metadata, face_image, name)
     if names:
         print(names)
         write_to_pickle(known_face_encodings, new_known_face_metadata, output_file, new_file)
