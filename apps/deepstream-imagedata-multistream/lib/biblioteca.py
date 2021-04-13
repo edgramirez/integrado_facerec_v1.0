@@ -228,8 +228,8 @@ def compare_data(data_file, known_faces_data):
 
 def read_video(video_input, data_file, **kwargs):
     video_capture = cv2.VideoCapture(video_input)
-    find =  kwargs.get('find', False)
-    silence =  kwargs.get('silence', False)
+    find = kwargs.get('find', False)
+    silence = kwargs.get('silence', False)
 
     # Track how long since we last saved a copy of our known faces to disk as a backup.
     number_of_faces_since_save = 0
