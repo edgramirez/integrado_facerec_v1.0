@@ -90,7 +90,6 @@ def register_new_face_2(known_face_metadata, frame_image, face_location, name):
 
     # Grab the image of the the face from the current frame of video
     top, right, bottom, left = face_location
-    #face_image = small_frame[top:bottom, left:right]
     face_image = frame_image[top:bottom, left:right]
     face_image = cv2.resize(face_image, (150, 150))
 
@@ -109,6 +108,9 @@ def register_new_face_2(known_face_metadata, frame_image, face_location, name):
 
 
 def write_to_pickle(known_face_encodings, known_face_metadata, data_file, new_file = True):
+    if data_file == '':
+        com.log_error('File with empty name', data_file)
+
     if new_file and com.file_exists(data_file):
         os.remove(data_file)
         if com.file_exists(data_file):
@@ -119,6 +121,15 @@ def write_to_pickle(known_face_encodings, known_face_metadata, data_file, new_fi
             pickle.dump(face_data, f)
             print("Known faces saved...")
     else:
+        # create empty file if does not exists
+        if not com.file_exists(data_file):
+            try:
+                open(data_file, 'a').close()
+            except OSError:
+                com.log_error('Failed creating the file', data_file)
+        else:
+            print('File created')
+
         with open(data_file,'ab') as f:
             face_data = [known_face_encodings, known_face_metadata]
             pickle.dump(face_data, f)
@@ -327,13 +338,13 @@ def read_video(video_input, data_file, **kwargs):
                     face_labels.append(face_label)
 
             # Draw a box around each face and label each face
-            if face_label is not None:
+            if face_labels:
                 draw_box_around_face(face_locations, face_labels, frame)
 
             # Display recent visitor images
             display_recent_visitors_face(known_face_metadata, frame)
 
-        # Display the final frame of video with boxes drawn around each detected fames
+        # Display the final frame of video with boxes drawn around each detected face
         if not silence:
             cv2.imshow('Video', frame)
 
