@@ -11,16 +11,28 @@ from datetime import datetime, timedelta
 font = cv2.FONT_HERSHEY_SIMPLEX
 
 
+def write_to_pickle(data, data_file):
+    with open(data_file, mode='ab') as f:
+        pickle.dump(data, f)
+        print("saving into file...", data_file)
+
+
 def read_pickle(pickle_file, exception=True):
+    data = []
     try:
         with open(pickle_file, 'rb') as f:
-            known_face_encodings, known_face_metadata = pickle.load(f)
-            return len(known_face_metadata), known_face_encodings, known_face_metadata
+            while True:
+                try:
+                    d = pickle.load(f)
+                    data.append(d)
+                except Exception as e:
+                    break
+            return data
     except OSError as e:
         if exception:
             com.log_error("Unable to open pickle_file: {}, original exception {}".format(pickle_file, str(e)))
         else:
-            return 0, [], []
+            return 0, []
 
 
 def clasify_to_known_and_unknown(frame_image, face_locations, **kwargs):
@@ -118,46 +130,6 @@ def register_new_face(known_face_metadata, face_image, name):
     })
 
     return known_face_metadata
-
-
-def delete_pickle(data_file):
-    os.remove(data_file)
-    if com.file_exists(data_file):
-        raise Exception('unable to delete file: %s' % file_name)
-
-
-def write_to_pickle(known_face_encodings, known_face_metadata, data_file):
-    with open(data_file, mode='ab') as f:
-        face_data = [known_face_encodings, known_face_metadata]
-        pickle.dump(face_data, f)
-        print("Known faces saved...")
-    '''    
-    if com.file_exists_and_empty(data_file):
-        with open(data_file, 'ab') as f:
-            face_data = [known_face_encodings, known_face_metadata]
-            pickle.dump(face_data, f)
-            print("Known faces saved...")
-    else:
-        with open(file, mode='ab'):
-            face_data = [known_face_encodings, known_face_metadata]
-            pickle.dump(face_data, f)
-            print("Known faces saved...")
-
-
-    if new_file and com.file_exists(data_file):
-        os.remove(data_file)
-        if com.file_exists(data_file):
-            raise Exception('unable to delete file: %s' % file_name)
-
-        with open(data_file, 'wb') as f:
-            face_data = [known_face_encodings, known_face_metadata]
-            pickle.dump(face_data, f)
-            print("Known faces saved...")
-    else:
-        with open(data_file,'ab') as f:
-            face_data = [known_face_encodings, known_face_metadata]
-            pickle.dump(face_data, f)
-    '''
 
 
 def lookup_known_face(face_encoding, known_face_encodings, known_face_metadata, tolerance = 0.62):

@@ -93,7 +93,7 @@ def set_known_faces_db_name(value):
     input_file = value
 
 
-def set_output_db_name(value):
+def set_output_db_name_prefix(value):
     global output_file
     output_file = value
 
@@ -117,9 +117,19 @@ def get_known_faces_db_name():
     return input_file
 
 
-def get_output_db_name():
+def get_metadata_db():
     global output_file
-    return output_file
+    return output_file + '_metadata.dat'
+
+
+def get_encodings_db():
+    global output_file
+    return output_file + '_encodings.dat'
+
+
+def get_images_db():
+    global output_file
+    return output_file + '_images.dat'
 
 
 def get_known_faces_db():
@@ -142,10 +152,10 @@ def crop_and_get_faces_locations(n_frame, obj_meta, confidence):
 
 def update_faces_metadata(face_image, name, confidence):
     """
-    Add a new person to our list of known faces
+    Add a new person metadata to our list of known faces
     """
-    # Add a new matching dictionary entry to our metadata list.
-    global known_face_metadata, total_visitors
+    #global known_face_metadata, total_visitors
+    global total_visitors
     today_now = datetime.now()
 
     known_face_metadata.append({
@@ -155,11 +165,10 @@ def update_faces_metadata(face_image, name, confidence):
         "seen_count": 1,
         "seen_frames": 1,
         "name": name,
-        "confidence": confidence,
-        "face_image": face_image,
+        "confidence": confidence
     })
-
     total_visitors = len(known_face_metadata)
+    biblio.write_to_pickle(known_face_metadata, get_metadata_db())
     return known_face_metadata
 
 
@@ -240,7 +249,7 @@ def tiler_sink_pad_buffer_probe(pad,info,u_data):
             break
 
         frame_number = frame_meta.frame_num
-        l_obj=frame_meta.obj_meta_list
+        l_obj = frame_meta.obj_meta_list
         num_rects = frame_meta.num_obj_meta
         is_first_obj = True
         save_image = False
@@ -262,7 +271,7 @@ def tiler_sink_pad_buffer_probe(pad,info,u_data):
             # Periodically check for objects with borderline confidence value that may be false positive detections.
             # If such detections are found, annoate the frame with bboxes and confidence value.
             # Save the annotated frame to file.
-            print(obj_meta.confidence)
+            #print(obj_meta.confidence)
             if obj_meta.class_id == 0 and obj_meta.confidence > 0.85:
                 print('taca...................................')
                 # Getting Image data using nvbufsurface
@@ -292,9 +301,9 @@ def tiler_sink_pad_buffer_probe(pad,info,u_data):
         except StopIteration:
             break
 
-    total_visitors, known_face_metadata, known_face_encodings = get_known_faces_db()
+    #total_visitors, known_face_metadata, known_face_encodings = get_known_faces_db()
     #print(total_visitors, known_face_metadata, known_face_encodings)
-    biblio.write_to_pickle(known_face_encodings, known_face_metadata, get_output_db_name())
+    #biblio.write_to_pickle(known_face_encodings, known_face_metadata, get_metadata_db())
     return Gst.PadProbeReturn.OK
 
 def draw_bounding_boxes(image, obj_meta, confidence):
@@ -407,13 +416,14 @@ def main(args):
     Gst.init(None)
 
     # We load the database of known faces here if there is one, and we define the output DB name if we are only reading
-    known_faces_db_name = '/home/mit-mexico/github/integrado_facerec_v1.0/apps/deepstream-imagedata-multistream/data/encoded_known_faces/knownFaces.dat'
-    output_db_name = '/home/mit-mexico/github/integrado_facerec_v1.0/apps/deepstream-imagedata-multistream/data/video_encoded_faces/test_video_default.data'
+    known_faces_db_name = '/home/mit-mexico/github/integrado_facerec_v1.0/apps/deepstream-imagedata-multistream/data/encoded_known_faces/knownFaces'
+    output_db_name = '/home/mit-mexico/github/integrado_facerec_v1.0/apps/deepstream-imagedata-multistream/data/video_encoded_faces/test_video_default'
     set_known_faces_db_name(known_faces_db_name)
-    set_output_db_name(output_db_name)
+    set_output_db_name_prefix(output_db_name)
 
     # extract the database information and transfere it to the variables
-    total, encodings, metadata = biblio.read_pickle(known_faces_db_name, False)
+    encodings, metadata = biblio.read_pickle(known_faces_db_name, False)
+    total = len(metadata)
     set_known_faces_db(total, encodings, metadata)
 
     if total == 0:
