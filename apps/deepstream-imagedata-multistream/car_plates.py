@@ -42,11 +42,11 @@ import pyds
 import cv2
 import os
 import os.path
-import face_recognition
+from os import path
 import lib.biblioteca as biblio
 import lib.common as com
+import face_recognition
 from datetime import datetime, timedelta
-from os import path
 
 
 fps_streams={}
@@ -55,16 +55,6 @@ saved_count={}
 global PGIE_CLASS_ID_FACE
 PGIE_CLASS_ID_FACE=0
 global PGIE_CLASS_ID_MAKE
-
-global total_visitors
-global known_face_encodings
-global known_face_metadata 
-global actions
-global program_action
-global input_file
-global output_file
-
-actions = {'read': 1, 'find': 2, 'compare': 3}
 PGIE_CLASS_ID_MAKE=2
 
 MAX_DISPLAY_LEN=64
@@ -82,39 +72,30 @@ TILED_OUTPUT_WIDTH=1280
 #TILED_OUTPUT_HEIGHT=1080
 TILED_OUTPUT_HEIGHT=720
 GST_CAPS_FEATURES_NVMM="memory:NVMM"
-pgie_classes_str= ["carita", "Placa", "Marca","Modelo"]
+pgie_classes_str= ["face", "Placa", "Marca","Modelo"]
 
 CURRENT_DIR = os.getcwd()
 
+
+global total_visitors, known_face_encodings, known_face_metadata, actions
+actions = {'read': 1, 'find': 2, 'compare': 3}
+
+
+### setters ###
 
 def set_action(value):
     global action
     action = value
 
 
-def set_input_file(value):
+def set_known_faces_db_name(value):
     global input_file
     input_file = value
 
 
-def set_output_file(value):
+def set_output_db_name(value):
     global output_file
     output_file = value
-
-
-def get_action():
-    global action
-    return action
-
-
-def get_input_file():
-    global input_file
-    return input_file
-
-
-def get_output_file():
-    global output_file
-    return output_file
 
 
 def set_known_faces_db(total, encodings, metadata):
@@ -124,78 +105,110 @@ def set_known_faces_db(total, encodings, metadata):
     known_face_metadata = metadata
 
 
+### getters ###
+
+def get_action():
+    global action
+    return action
+
+
+def get_known_faces_db_name():
+    global input_file
+    return input_file
+
+
+def get_output_db_name():
+    global output_file
+    return output_file
+
+
 def get_known_faces_db():
-    global total_visitors, known_face_encodings, known_face_metadata
-    return total_visitors, known_face_encodings, known_face_metadata
+    global total_visitors, known_face_metadata, known_face_encodings
+    return total_visitors, known_face_metadata, known_face_encodings
 
 
-def get_faces_locations(n_frame):
-
+def crop_and_get_faces_locations(n_frame, obj_meta, confidence):
     # convert python array into numy array format.
     frame_image = np.array(n_frame, copy=True, order='C')
 
     # covert the array into cv2 default color format
-    #frame_image = cv2.cvtColor(frame_image, cv2.COLOR_RGBA2BGRA)
-    rgb_frame   = cv2.cvtColor(frame_image, cv2.COLOR_RGB2BGR)
+    rgb_frame = cv2.cvtColor(frame_image, cv2.COLOR_RGB2BGR)
 
-    # converting to color
+    # draw rectangle and crop the face
+    crop_image = draw_bounding_boxes(rgb_frame, obj_meta, confidence)
 
-    # get locations if there are
-    face_locations = face_recognition.face_locations(rgb_frame)
-
-    return rgb_frame, face_locations
+    return crop_image
 
 
-def clasify_to_known_and_unknown(frame_image, face_locations, **kwargs):
-    #global known_face_metadata, known_face_encodings, program_action
+def update_faces_metadata(face_image, name, confidence):
+    """
+    Add a new person to our list of known faces
+    """
+    # Add a new matching dictionary entry to our metadata list.
+    global known_face_metadata, total_visitors
+    today_now = datetime.now()
+
+    known_face_metadata.append({
+        "first_seen": today_now,
+        "first_seen_this_interaction": today_now,
+        "last_seen": today_now,
+        "seen_count": 1,
+        "seen_frames": 1,
+        "name": name,
+        "confidence": confidence,
+        "face_image": face_image,
+    })
+
+    total_visitors = len(known_face_metadata)
+    return known_face_metadata
+
+
+def update_faces_encodings(face_encoding):
+    global known_face_encodings
+    known_face_encodings.append(face_encoding)
+
+
+def register_new_face_3(face_encoding, image, name, confidence):
+    # Add the new face metadata to our known faces metadata
+    update_faces_metadata(image, name, confidence)
+
+    # Add the face encoding to the list of known faces encodings
+    update_faces_encodings(face_encoding)
+
+
+def clasify_to_known_and_unknown(frame_image, confidence, **kwargs):
     find = kwargs.get('find', False)
     silence = kwargs.get('silence', False)
+
+    # try to encode the crop image with the detected face
+    face_encodings = face_recognition.face_encodings(frame_image)
     
-    # Encode image of the face 
-    face_encodings = face_recognition.face_encodings(frame_image, face_locations)
-    face_labels = []
+    if face_encodings:
+        # get the current information of the database
+        total_visitors, known_face_metadata, known_face_encodings = get_known_faces_db()
 
-    total_visitors, known_face_metadata, known_face_encodings = get_known_faces_db()
-    program_action = get_action()
-    output_file = get_output_file()
+        if len(known_face_metadata) == 0 or len(known_face_encodings) == 0:
+            metadata = None
+        else:
+            metadata = biblio.lookup_known_face(face_encodings[0], known_face_encodings, known_face_metadata)
 
-    for face_location, face_encoding in zip(face_locations, face_encodings):
-        # check if this face is in our list of known faces.
-        metadata = biblio.lookup_known_face(face_encoding, known_face_encodings, known_face_metadata)
-
-        face_label = None
         # If we found the face, label the face with some useful information.
         if metadata:
             print('uno ya visto')
             time_at_door = datetime.now() - metadata['first_seen_this_interaction']
             face_label = f"{metadata['name']} {int(time_at_door.total_seconds())}s"
         else:  # If this is a new face, add it to our list of known faces
+            program_action = get_action()
             if program_action == actions['read']:
-                print('reading ... nuevo')
-                face_label = "New visitor" + str(total_visitors) + '!!'
+                print('reading ... nuevo', total_visitors)
+                face_label = 'visitor_' + str(total_visitors)
                 total_visitors += 1
 
-                # Add the new face to our known faces metadata
-                known_face_metadata = biblio.register_new_face_2(known_face_metadata, frame_image, face_location, 'visitor' + str(total_visitors))
-                # Add the face encoding to the list of known faces
-                known_face_encodings.append(face_encoding)
+                # Add new metadata and encoding to the known_faces_metadata and known_faces_encodings
+                register_new_face_3(face_encodings[0], frame_image, face_label, confidence)
+                return frame_image, total_visitors
 
-                if program_action == actions['read']:
-                    cv2.imwrite("/tmp/stream_0/visitor_" + str(total_visitors)+".jpg", frame_image)
-                    #biblio.write_to_pickle(known_face_encodings, known_face_metadata, output_file, False)
-
-        if face_label is not None:
-            face_labels.append(face_label)
-
-    # save the changes generated in the previous for loop
-    set_known_faces_db(total_visitors, known_face_metadata, known_face_encodings)
-
-    # if face_labels is not empty -- Draw a box around each detected face and label them 
-    if face_labels:
-        biblio.draw_box_around_face(face_locations, face_labels, frame_image)
-
-        # Display recent visitor images
-        biblio.display_recent_visitors_face(known_face_metadata, frame_image)
+    return None, None
 
 
 # tiler_sink_pad_buffer_probe  will extract metadata received on tiler src pad
@@ -226,7 +239,7 @@ def tiler_sink_pad_buffer_probe(pad,info,u_data):
         except StopIteration:
             break
 
-        frame_number=frame_meta.frame_num
+        frame_number = frame_meta.frame_num
         l_obj=frame_meta.obj_meta_list
         num_rects = frame_meta.num_obj_meta
         is_first_obj = True
@@ -249,25 +262,17 @@ def tiler_sink_pad_buffer_probe(pad,info,u_data):
             # Periodically check for objects with borderline confidence value that may be false positive detections.
             # If such detections are found, annoate the frame with bboxes and confidence value.
             # Save the annotated frame to file.
-            
-            #print(obj_meta.confidence)
+            print(obj_meta.confidence)
             if obj_meta.class_id == 0 and obj_meta.confidence > 0.85:
+                print('taca...................................')
                 # Getting Image data using nvbufsurface
                 # the input should be address of buffer and batch_id
                 n_frame = pyds.get_nvds_buf_surface(hash(gst_buffer), frame_meta.batch_id)
+                frame_image = crop_and_get_faces_locations(n_frame, obj_meta, obj_meta.confidence)
+                frame_image, total_visitors = clasify_to_known_and_unknown(frame_image, obj_meta.confidence)
 
-                frame_image, face_locations = get_faces_locations(n_frame)
-                
-                if face_locations:
-                    clasify_to_known_and_unknown(frame_image, face_locations)
-
-                # Find all the face locations and face encodings in the current frame of video
-                # edgar -  Esto no esta funcionado pero posible diferencia de tipos de datos : 
-
-                #image=cv2.line(frame_image,(10,500),(600,500), (0,255,0), 4)
-                save_image = False
-                #print("face : ", obj_counter[obj_meta.class_id], obj_meta.confidence)
-                # edgar: estos recuadros se pintan al clasificar en  clasify_to_known_and_unknown() - frame_image = draw_bounding_boxes(frame_image, obj_meta,obj_meta.confidence)
+                if frame_image is not None:
+                    save_image = True
             try: 
                 l_obj=l_obj.next
             except StopIteration:
@@ -277,29 +282,35 @@ def tiler_sink_pad_buffer_probe(pad,info,u_data):
         # Get frame rate through this probe
         fps_streams["stream{0}".format(frame_meta.pad_index)].get_fps()
         if save_image:
-            cv2.imwrite(folder_name+"/stream_"+str(frame_meta.pad_index)+"/frame_"+str(frame_number)+".jpg",frame_image)
-
+            # acumulate the faces of this frame in a variable to be saved before leaving the tiler
+            print('edgar............................')
+            #cv2.imwrite(folder_name+"/stream_"+str(frame_meta.pad_index)+"/frame_"+str(frame_number)+".jpg", frame_image)
+            cv2.imwrite(folder_name + "/stream_" + str(frame_meta.pad_index) + "/frame_" + str(total_visitors) + ".jpg", frame_image)
         saved_count["stream_"+str(frame_meta.pad_index)]+=1        
         try:
             l_frame=l_frame.next
         except StopIteration:
             break
 
+    total_visitors, known_face_metadata, known_face_encodings = get_known_faces_db()
+    #print(total_visitors, known_face_metadata, known_face_encodings)
+    biblio.write_to_pickle(known_face_encodings, known_face_metadata, get_output_db_name())
     return Gst.PadProbeReturn.OK
 
-def draw_bounding_boxes(image,obj_meta,confidence):
-    confidence='{0:.2f}'.format(confidence)
-    rect_params=obj_meta.rect_params
-    top=int(rect_params.top)
-    left=int(rect_params.left)
-    width=int(rect_params.width)
-    height=int(rect_params.height)
-    obj_name=pgie_classes_str[obj_meta.class_id]
+def draw_bounding_boxes(image, obj_meta, confidence):
+    #confidence = '{0:.2f}'.format(confidence)
+    rect_params = obj_meta.rect_params
+    top = int(rect_params.top)
+    left = int(rect_params.left)
+    width = int(rect_params.width)
+    height = int(rect_params.height)
+    #obj_name = pgie_classes_str[obj_meta.class_id]
     #image=cv2.rectangle(image,(left,top),(left+width,top+height),(0,0,255,0),2)
     #image=cv2.line(image, (left,top),(left+width,top+height), (0,255,0), 9)
     # Note that on some systems cv2.putText erroneously draws horizontal lines across the image
-    image=cv2.putText(image,obj_name+',C='+str(confidence),(left-5,top-5),cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,0,255,0),2)
-    crop_image = image[top-20:top+height+20,left-20:left+width+20]
+    #image=cv2.putText(image,obj_name+',C='+str(confidence),(left-5,top-5),cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,0,255,0),2)
+    #image = cv2.putText(image, obj_name, (left-5,top-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255,0), 2)
+    crop_image = image[top-20:top+height+20, left-20:left+width+20]
     return crop_image
 
 def cb_newpad(decodebin, decoder_src_pad,data):
@@ -395,31 +406,31 @@ def main(args):
     GObject.threads_init()
     Gst.init(None)
 
+    # We load the database of known faces here if there is one, and we define the output DB name if we are only reading
+    known_faces_db_name = '/home/mit-mexico/github/integrado_facerec_v1.0/apps/deepstream-imagedata-multistream/data/encoded_known_faces/knownFaces.dat'
+    output_db_name = '/home/mit-mexico/github/integrado_facerec_v1.0/apps/deepstream-imagedata-multistream/data/video_encoded_faces/test_video_default.data'
+    set_known_faces_db_name(known_faces_db_name)
+    set_output_db_name(output_db_name)
+
+    # extract the database information and transfere it to the variables
+    total, encodings, metadata = biblio.read_pickle(known_faces_db_name, False)
+    set_known_faces_db(total, encodings, metadata)
+
+    if total == 0:
+        action = 'read'
+    else:
+        action = 'find'
+        if com.file_exists_and_not_empty(output_db_name):
+            action = 'compare'
+
+    set_action(actions[action])
+
+
     # Create gstreamer elements */
     # Create Pipeline element that will form a connection of other elements
     print("Creating Pipeline \n ")
     pipeline = Gst.Pipeline()
     is_live = False
-
-
-    # load data, if there is 
-    #global total_visitors, known_face_encodings, known_face_metadata
-
-    set_input_file('/home/mit-mexico/github/integrado_facerec_v1.0/apps/deepstream-imagedata-multistream/data/encoded_known_faces/knownFaces.dat')
-    set_output_file('/home/mit-mexico/github/integrado_facerec_v1.0/apps/deepstream-imagedata-multistream/data/video_encoded_faces/test_video_default.data')
-    known_faces_data_file = get_input_file()
-    total, encodings, metadata = biblio.read_pickle(known_faces_data_file, False)
-    set_known_faces_db(total, encodings, metadata)
-    total_visitors, known_face_encodings, known_face_metadata = get_known_faces_db()
-
-    if total_visitors == 0:
-        set_action(actions['read'])
-    else:
-        database_file = output_file
-        if com.file_exists(database_file):
-            set_action(actions['compare'])
-        else:
-            set_action(actions['find'])
 
     if not pipeline:
         sys.stderr.write(" Unable to create Pipeline \n")

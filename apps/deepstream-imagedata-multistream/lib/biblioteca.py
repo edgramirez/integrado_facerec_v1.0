@@ -23,6 +23,47 @@ def read_pickle(pickle_file, exception=True):
             return 0, [], []
 
 
+def clasify_to_known_and_unknown(frame_image, face_locations, **kwargs):
+    find = kwargs.get('find', False)
+    silence = kwargs.get('silence', False)
+
+    # Encode image of the face 
+    face_encodings = face_recognition.face_encodings(frame_image, face_locations)
+    face_labels = []
+
+    total_visitors, known_face_metadata, known_face_encodings = get_known_faces_db()
+    program_action = get_action()
+    output_file = get_output_file()
+
+    for face_location, face_encoding in zip(face_locations, face_encodings):
+        # check if this face is in our list of known faces.
+        metadata = biblio.lookup_known_face(face_encoding, known_face_encodings, known_face_metadata)
+
+        face_label = None
+        # If we found the face, label the face with some useful information.
+        if metadata:
+            print('uno ya visto')
+            time_at_door = datetime.now() - metadata['first_seen_this_interaction']
+            face_label = f"{metadata['name']} {int(time_at_door.total_seconds())}s"
+        else:  # If this is a new face, add it to our list of known faces
+            if program_action == actions['read']:
+                print('reading ... nuevo')
+                face_label = "New visitor" + str(total_visitors) + '!!'
+                total_visitors += 1
+
+                # Add the new face to our known faces metadata
+                known_face_metadata = biblio.register_new_face_2(known_face_metadata, frame_image, face_location, 'visitor' + str(total_visitors))
+                # Add the face encoding to the list of known faces
+                known_face_encodings.append(face_encoding)
+
+                if program_action == actions['read']:
+                    cv2.imwrite("/tmp/stream_0/visitor_" + str(total_visitors)+".jpg", frame_image)
+                    #biblio.write_to_pickle(known_face_encodings, known_face_metadata, output_file, False)
+
+        if face_label is not None:
+            face_labels.append(face_label)
+
+
 def draw_box_around_face(face_locations, face_labels, image):
     # Draw a box around each face and label each face
     for (top, right, bottom, left), face_label in zip(face_locations, face_labels):
@@ -72,67 +113,51 @@ def register_new_face(known_face_metadata, face_image, name):
         "seen_count": 1,
         "seen_frames": 1,
         "name": name,
+        "confidence": 0.0,
         "face_image": face_image,
     })
 
     return known_face_metadata
 
 
-def register_new_face_2(known_face_metadata, frame_image, face_location, name):
-    """
-    Add a new person to our list of known faces
-    """
-    # Add a matching dictionary entry to our metadata list.
-    # We can use this to keep track of how many times a person has visited, when we last saw them, etc.
-
-    # Resize frame of video to 1/4 size for faster face recognition processing
-    #small_frame = cv2.resize(frame_image, (0, 0), fx=0.25, fy=0.25)
-
-    # Grab the image of the the face from the current frame of video
-    top, right, bottom, left = face_location
-    face_image = frame_image[top:bottom, left:right]
-    face_image = cv2.resize(face_image, (150, 150))
-
-    today_now = datetime.now()
-    known_face_metadata.append({
-        "first_seen": today_now,
-        "first_seen_this_interaction": today_now,
-        "last_seen": today_now,
-        "seen_count": 1,
-        "seen_frames": 1,
-        "name": name,
-        "face_image": face_image,
-    })
-
-    return known_face_metadata
+def delete_pickle(data_file):
+    os.remove(data_file)
+    if com.file_exists(data_file):
+        raise Exception('unable to delete file: %s' % file_name)
 
 
-def write_to_pickle(known_face_encodings, known_face_metadata, data_file, new_file = True):
-    if data_file == '':
-        com.log_error('File with empty name', data_file)
+def write_to_pickle(known_face_encodings, known_face_metadata, data_file):
+    with open(data_file, mode='ab') as f:
+        face_data = [known_face_encodings, known_face_metadata]
+        pickle.dump(face_data, f)
+        print("Known faces saved...")
+    '''    
+    if com.file_exists_and_empty(data_file):
+        with open(data_file, 'ab') as f:
+            face_data = [known_face_encodings, known_face_metadata]
+            pickle.dump(face_data, f)
+            print("Known faces saved...")
+    else:
+        with open(file, mode='ab'):
+            face_data = [known_face_encodings, known_face_metadata]
+            pickle.dump(face_data, f)
+            print("Known faces saved...")
+
 
     if new_file and com.file_exists(data_file):
         os.remove(data_file)
         if com.file_exists(data_file):
             raise Exception('unable to delete file: %s' % file_name)
 
-        with open(data_file,'wb') as f:
+        with open(data_file, 'wb') as f:
             face_data = [known_face_encodings, known_face_metadata]
             pickle.dump(face_data, f)
             print("Known faces saved...")
     else:
-        # create empty file if does not exists
-        if not com.file_exists(data_file):
-            try:
-                open(data_file, 'a').close()
-            except OSError:
-                com.log_error('Failed creating the file', data_file)
-        else:
-            print('File created')
-
         with open(data_file,'ab') as f:
             face_data = [known_face_encodings, known_face_metadata]
             pickle.dump(face_data, f)
+    '''
 
 
 def lookup_known_face(face_encoding, known_face_encodings, known_face_metadata, tolerance = 0.62):
@@ -144,7 +169,14 @@ def lookup_known_face(face_encoding, known_face_encodings, known_face_metadata, 
         return None
 
     # Only check if there is a match
-    matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
+    try:
+        matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
+    except Exception as e:
+        print(str(e))
+        print(type(known_face_encodings),'\n', type(face_encoding),'\n')
+        print(known_face_encodings, '\n\n', face_encoding)
+        #help(face_recognition.compare_faces)
+        quit()
 
     if True in matches:
         # If there is a match, then get the best distances only on the index with "True" to ignore the process on those that are False
@@ -200,13 +232,14 @@ def encode_known_faces(known_faces_path, output_file, new_file = True):
             face_image = rgb_small_frame[top:bottom, left:right]
             face_image = cv2.resize(face_image, (150, 150))
 
-            new_known_face_metadata = register_new_face(known_face_metadata, face_image, name)
-
             encoding = face_recognition.face_encodings(face_image)[0]
             known_face_encodings.append(encoding)
+
+            new_known_face_metadata = register_new_face(known_face_metadata, face_image, name)
     if names:
         print(names)
-        write_to_pickle(known_face_encodings, new_known_face_metadata, output_file, new_file)
+        #write_to_pickle(known_face_encodings, new_known_face_metadata, output_file, new_file)
+        write_to_pickle(known_face_encodings, new_known_face_metadata, output_file)
     else:
         print('Ningun archivo de imagen contine rostros')
 
@@ -338,13 +371,13 @@ def read_video(video_input, data_file, **kwargs):
                     face_labels.append(face_label)
 
             # Draw a box around each face and label each face
-            if face_labels:
+            if face_label is not None:
                 draw_box_around_face(face_locations, face_labels, frame)
 
             # Display recent visitor images
             display_recent_visitors_face(known_face_metadata, frame)
 
-        # Display the final frame of video with boxes drawn around each detected face
+        # Display the final frame of video with boxes drawn around each detected fames
         if not silence:
             cv2.imshow('Video', frame)
 
