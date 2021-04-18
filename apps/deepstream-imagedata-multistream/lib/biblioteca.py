@@ -147,7 +147,6 @@ def lookup_known_face(face_encoding, known_face_encodings, known_face_metadata, 
         print(str(e))
         print(type(known_face_encodings),'\n', type(face_encoding),'\n')
         print(known_face_encodings, '\n\n', face_encoding)
-        #help(face_recognition.compare_faces)
         quit()
 
     if True in matches:
@@ -172,9 +171,9 @@ def lookup_known_face(face_encoding, known_face_encodings, known_face_metadata, 
                 metadata["first_seen_this_interaction"] = datetime.now()
                 metadata["seen_count"] += 1
 
-            return metadata
+            return metadata, best_match_index
 
-    return None
+    return None, None
 
 
 def encode_known_faces(known_faces_path, output_file, new_file = True):
